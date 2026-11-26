@@ -4,6 +4,8 @@
 // @version      1.9.1
 // @description  English navigation, action buttons and publication/presentation entry assistants
 // @match        https://ras2.kyusan-u.ac.jp/kysap/*
+// @updateURL    https://raw.githubusercontent.com/LERC/ksu-academic-profile/main/ksu-academic-profile.user.js
+// @downloadURL  https://raw.githubusercontent.com/LERC/ksu-academic-profile/main/ksu-academic-profile.user.js
 // @run-at       document-idle
 // @grant        none
 // @noframes
