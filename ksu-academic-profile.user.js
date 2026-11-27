@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         KSU Research Profile - English Navigation
 // @namespace    KSU Research Profile
-// @version      1.9.1
+// @version      1.9.5
 // @description  English navigation, action buttons and publication/presentation entry assistants
 // @match        https://ras2.kyusan-u.ac.jp/kysap/*
-// @updateURL    https://raw.githubusercontent.com/LERC/ksu-academic-profile/main/ksu-academic-profile.user.js
-// @downloadURL  https://raw.githubusercontent.com/LERC/ksu-academic-profile/main/ksu-academic-profile.user.js
+// @updateURL    https://raw.githubusercontent.com/hnbovee-ai/LERC/main/ksu-academic-profile.user.js
+// @downloadURL  https://raw.githubusercontent.com/hnbovee-ai/LERC/main/ksu-academic-profile.user.js
 // @run-at       document-idle
 // @grant        none
 // @noframes
@@ -243,11 +243,14 @@
     const invitedOptions = [['招待あり','Yes'],['招待なし','No'],['その他(不明)','Unknown']];
     const locationOptions = [['国内','Domestic (Japan)'],['国外','International (outside Japan)'],['不明','Unknown']];
     const detailFields = [
-        ['doi','DOI','DOIコード'],['reference','Reference number','文献番号'],['naid','NAID','NAID'],['pmid','PMID','PMID'],
-        ['jglobal','J-GLOBAL ID','JGlobalID'],['arxiv','arXiv ID','arXiv ID'],['orcid','ORCID Put Code','Put Code(ORCID)'],
-        ['dblp','DBLP ID','DBLP ID'],['weko','WEKO ID (Open Depo)','WekoID(Open Depo)'],['asin','ASIN','ASIN'],
-        ['permalink','Permalink URL','PermalinkURL'],['researchmap','researchmap URL','researchmap用URL'],['external','External URL','外部リンクURL']
+        ['doi','DOI','DOIコード'],
+        ['permalink','Link to article','PermalinkURL']
     ];
+    const simplePubTypes = pubTypes.filter(([jp]) => ['論文','解説・総説','会議録','寄稿関係'].includes(jp));
+    const simplePubLanguages = languageOptions.slice(0,2);
+    const simplePeerOptions = peerOptions.slice(0,2);
+    const simpleInvitedOptions = invitedOptions.slice(0,2);
+    const simpleLocationOptions = locationOptions.slice(0,2);
     const selectors = { texts:'input:not([type]),input[type="text"],input[type="number"],input[type="url"]', areas:'textarea', radios:'input[type="radio"]', checks:'input[type="checkbox"]', selects:'select' };
     function directRows(root, label) {
         return all(root, 'tr').filter(r => r.cells.length >= 2 && rowKey(r.cells[0].textContent) === rowKey(label));
@@ -376,7 +379,7 @@
         const panel = document.createElement('aside'); panel.id = PANEL_ID;
         panel.setAttribute('aria-label','Publication entry assistant');
         panel.innerHTML = `<div class="kp-head"><strong>Publication entry</strong><button type="button" class="kp-toggle" aria-expanded="true">Hide</button></div>
-          <form autocomplete="off"><div class="kp-scroll"><p class="kp-note">Enter details here, then fill the original form. * Required. Nothing is submitted automatically.</p></div>
+          <form autocomplete="off"><div class="kp-scroll"><p class="kp-note">Enter details here, then click "Autofill form". Click "Submit" when complete.</p></div>
           <div class="kp-footer"><div class="kp-status" role="status" aria-live="polite">Ready to enter publication details.</div><div class="kp-actions"><button type="submit">Autofill form</button><button type="button" class="kp-jump">Go to Submit</button></div></div></form>`;
         const sideForm = panel.querySelector('form'); const scroll = panel.querySelector('.kp-scroll');
         const status = panel.querySelector('.kp-status'); const fillButton = sideForm.querySelector('button[type=submit]');
@@ -406,26 +409,101 @@
         function disclosure(text) { const el = document.createElement('details'); const summary = document.createElement('summary'); summary.textContent = text; el.append(summary); scroll.append(el); return el; }
         function check(parent,id,label) { const lab = document.createElement('label'); lab.className = 'kp-check'; const input = document.createElement('input'); input.type='checkbox'; input.id='kp-'+id; fields[id]=input; input.addEventListener('change',()=>dirty.add(id)); lab.append(input,document.createTextNode(label)); parent.append(lab); return input; }
         field(scroll,'public','List on KSU profile page?',{required:true,choices:publicOptions});
-        field(scroll,'type','Publication type',{required:true,choices:pubTypes});
-        const g1=grid(scroll); field(g1,'language','Language',{required:true,choices:languageOptions}); field(g1,'peer','Peer reviewed?',{required:true,choices:peerOptions});
-        field(scroll,'otherLanguage','Other language',{placeholder:'Specify language'}); fields.otherLanguage.parentElement.hidden=true;
-        const g2=grid(scroll); field(g2,'invited','Invited article?',{required:true,choices:invitedOptions}); field(g2,'location','Publication location',{required:true,choices:locationOptions});
-        heading('Title and journal', true);
-        field(scroll,'titleJP','Title — Japanese',{area:true}); field(scroll,'titleEN','Title — English',{area:true});
-        note(scroll,'Enter a title in at least one language (Japanese or English). If only English is supplied, it is also copied into the original title field.');
+        field(scroll,'type','Publication type',{required:true,choices:simplePubTypes});
+        const g1=grid(scroll); field(g1,'language','Language',{required:true,choices:simplePubLanguages}); field(g1,'peer','Peer reviewed?',{required:true,choices:simplePeerOptions});
+        const g2=grid(scroll); field(g2,'invited','Invited article?',{required:true,choices:simpleInvitedOptions}); field(g2,'location','Publication location',{required:true,choices:simpleLocationOptions});
+        field(scroll,'titleEN','Title',{area:true,required:true});
         field(scroll,'journal','Journal title',{required:true});
         field(scroll,'publisher','Publisher');
         const g3=grid(scroll); field(g3,'volume','Volume'); field(g3,'issue','Issue');
         const g4=grid(scroll); field(g4,'start','Start page',{groupRequired:true}); field(g4,'end','End page'); check(scroll,'noPages','No page numbers (e.g. online journal)');
         field(scroll,'totalPages','Total pages',{numeric:true});
         check(scroll,'international','International co-authorship');
-        heading('Authors and publication date', true);
-        field(scroll,'authorsJP','Authors — Japanese',{area:true}); field(scroll,'authorsEN','Authors — English',{area:true});
-        note(scroll,'Enter authors in at least one language (Japanese or English). Separate names with a comma and a space.');
+        field(scroll,'authorsEN','Authors',{area:true,required:true});
+        note(scroll,'Separate names with a comma and a space.');
+        // The source form supports first, second and last author positions.
+        // Corresponding authorship remains independent in the original form.
+        const authorRoles = [
+            ['first','First author','BFRSTC'],
+            ['second','Second author','BSCNDC'],
+            ['last','Last author','BLASTC']
+        ];
+        function visibleAuthorRows() {
+            return all(originalForm,'tr[id^="AUTHOR"]').filter(row =>
+                /^AUTHOR\d+$/.test(row.id) && row.getClientRects().length &&
+                getComputedStyle(row).visibility !== 'hidden');
+        }
+        function roleTargets(row) {
+            const index=row.id.slice('AUTHOR'.length);
+            return authorRoles.map(([id,,prefix])=>{
+                const matches=all(row,`input[type="checkbox"][name="${prefix}${index}"]`);
+                if(matches.length!==1)throw new Error('Authorship role checkbox not uniquely found: '+prefix+index);
+                return [id,matches[0]];
+            });
+        }
+        function authorIdentity(row) {
+            return Array.from(row.cells).slice(0,2).map(cell=>normalize(cell.textContent)).join('|');
+        }
+        const roleSelect=field(scroll,'authorRole','Authorship role',{choices:authorRoles.map(([id,label])=>[id,label])});
+        roleSelect.options[0].textContent='Not specified';
+        const roleHint=document.createElement('p');roleHint.className='kp-note';roleHint.hidden=true;scroll.append(roleHint);
+        let boundAuthor=null;
+        let boundIdentity='';
+        function reflectRoles(targets){
+            const checked=targets.filter(([,el])=>el.checked);
+            roleSelect.value=checked.length===1?checked[0][0]:'';
+            roleHint.hidden=checked.length<=1;
+            roleHint.textContent=checked.length>1?'Multiple positions are selected in the original form. They will be kept unless you choose a position here.':'';
+        }
+        function initializeRoles(){
+            const rows=visibleAuthorRows();
+            try {
+                if(rows.length!==1)throw new Error('Select authorship roles in the original form when there is not exactly one KSU researcher.');
+                const row=rows[0],targets=roleTargets(row);
+                if(targets.some(([,el])=>el.disabled))throw new Error('Select authorship roles in the original form.');
+                boundAuthor=row;boundIdentity=authorIdentity(row);
+                reflectRoles(targets);
+            } catch(error){
+                boundAuthor=null;roleSelect.disabled=true;
+                roleHint.hidden=false;roleHint.textContent=error.message;
+            }
+        }
+        initializeRoles();
+        function planAuthorshipRoles(plan){
+            if(!dirty.has('authorRole'))return;
+            const rows=visibleAuthorRows();
+            if(rows.length!==1||rows[0]!==boundAuthor||authorIdentity(rows[0])!==boundIdentity)
+                throw new Error('The KSU researcher list has changed. Set authorship roles in the original form.');
+            const targets=roleTargets(boundAuthor);
+            if(targets.some(([,el])=>el.disabled))throw new Error('An authorship role is unavailable.');
+            const wantedRole=roleSelect.value;
+            if(wantedRole&&!targets.some(([id])=>id===wantedRole))throw new Error('Unknown authorship role.');
+            plan.push(()=>{
+                const currentRows=visibleAuthorRows();
+                if(currentRows.length!==1||currentRows[0]!==boundAuthor||authorIdentity(boundAuthor)!==boundIdentity)
+                    throw new Error('The KSU researcher list has changed. Set authorship roles in the original form.');
+                // Uncheck unwanted positions before checking the selected one.
+                // Never click the separate corresponding-author checkbox.
+                const corresponding=boundAuthor.querySelector(`input[type="checkbox"][name="BCRRSC${boundAuthor.id.slice(6)}"]`);
+                const wasCorresponding=corresponding?.checked;
+                for(const [id,el] of targets)if(id!==wantedRole)setChecked(el,false);
+                for(const [id,el] of targets)if(id===wantedRole)setChecked(el,true);
+                if(targets.some(([id,el])=>el.checked!==(id===wantedRole)))
+                    throw new Error('The original form did not accept the requested authorship position.');
+                if(corresponding&&corresponding.checked!==wasCorresponding)
+                    throw new Error('The original form also changed corresponding authorship. Please review that checkbox.');
+                reflectRoles(roleTargets(boundAuthor));
+                dirty.delete('authorRole');
+            });
+        }
+        heading('Publication date');
         const g5=grid(scroll,3); field(g5,'year','Year',{required:true,numeric:true,placeholder:'YYYY'}); field(g5,'month','Month',{numeric:true,placeholder:'MM'}); field(g5,'day','Day',{numeric:true,placeholder:'DD'});
-        const abstract = disclosure('Abstract (optional)'); field(abstract,'abstractJP','Abstract — Japanese / original',{area:true,rows:3}); field(abstract,'abstractEN','Abstract — English',{area:true,rows:3});
+        const abstract = disclosure('Abstract (optional)'); field(abstract,'abstractJP','Abstract text',{area:true,rows:3});
         const details = disclosure('DOI and other details (optional)');
-        for (const [id,label] of detailFields) { field(details,id,label); if(id==='permalink'||id==='researchmap') check(details,id+'Free','Free download'); }
+        field(details,'doi','DOI');
+        field(details,'permalink','Link to article');
+        note(details,'For articles without a DOI, or for a link to the article on an academic networking platform such as ResearchGate.');
+        check(details,'permalinkFree','Free download');
         const val = id => fields[id].value.trim();
         const selected = id => fields[id].checked;
         const wanted = id => val(id) !== '' || dirty.has(id);
@@ -435,28 +513,30 @@
         function readRadio(id,label,options,order=options.map(x=>x[0])) {
             tryRead(()=>{ const map=radioMap(originalForm,label,order); const chosen=[...map].find(([,r])=>r.checked)?.[0]; if(options.some(([jp])=>jp===chosen))setInitial(id,chosen); });
         }
-        readRadio('public','公開区分',publicOptions,publicOrder); readRadio('language','言語種別',languageOptions); readRadio('peer','査読の有無',peerOptions); readRadio('invited','招待の有無',invitedOptions); readRadio('location','掲載区分',locationOptions);
-        tryRead(()=>{const s=current('論文種別','selects',1)[0]; const value=pubTypes.find(([jp])=>normalize(jp)===normalize(s.selectedOptions[0]?.textContent)); if(value)setInitial('type',value[0]);});
-        tryRead(()=>setInitial('otherLanguage',current('言語種別','texts',1)[0].value));
-        tryRead(()=>{const x=current('表題','areas',2);setInitial('titleJP',x[0].value);setInitial('titleEN',x[1].value);});
+        readRadio('public','公開区分',publicOptions,publicOrder);
+        readRadio('language','言語種別',simplePubLanguages,languageOptions.map(x=>x[0]));
+        readRadio('peer','査読の有無',simplePeerOptions,peerOptions.map(x=>x[0]));
+        readRadio('invited','招待の有無',simpleInvitedOptions,invitedOptions.map(x=>x[0]));
+        readRadio('location','掲載区分',simpleLocationOptions,locationOptions.map(x=>x[0]));
+        tryRead(()=>{const s=current('論文種別','selects',1)[0]; const value=simplePubTypes.find(([jp])=>normalize(jp)===normalize(s.selectedOptions[0]?.textContent)); if(value)setInitial('type',value[0]);});
+        tryRead(()=>{const x=current('表題','areas',2);setInitial('titleEN',x[1].value.trim()?x[1].value:x[0].value);});
         tryRead(()=>setInitial('journal',current('掲載誌名','texts',4)[0].value));
         tryRead(()=>setInitial('publisher',current('出版社','texts',2)[0].value));
         tryRead(()=>setInitial('totalPages',current('総ページ数','texts',1)[0].value));
         tryRead(()=>{fields.international.checked=current('国際共著','checks',1)[0].checked;});
         const pagesLabel='巻・号・頁';
         tryRead(()=>{const x=current(pagesLabel,'texts',6);for(const [id,i] of [['volume',0],['issue',1],['start',4],['end',5]])setInitial(id,x[i].value);fields.noPages.checked=current(pagesLabel,'checks',1)[0].checked;});
-        tryRead(()=>{const x=current('著者・共著者','areas');if(x.length<2)throw new Error('Author textareas missing');setInitial('authorsJP',x[0].value);setInitial('authorsEN',x[1].value);});
+        tryRead(()=>{const x=current('著者・共著者','areas');if(x.length<2)throw new Error('Author textareas missing');setInitial('authorsEN',x[1].value.trim()?x[1].value:x[0].value);});
         tryRead(()=>{const s=current('発行年月日','selects',1)[0];if(normalize(s.selectedOptions[0]?.textContent)==='西暦'){const x=current('発行年月日','texts',3);['year','month','day'].forEach((id,i)=>setInitial(id,x[i].value));}});
-        tryRead(()=>{const x=current('概要','areas',2);setInitial('abstractJP',x[0].value);setInitial('abstractEN',x[1].value);});
+        tryRead(()=>{const x=current('概要','areas',2);setInitial('abstractJP',x[0].value);});
         // Avoid searching for collapsed/absent detail controls until necessary.
         tryRead(()=>{if(current('詳細情報','checks',1)[0].checked){for(const [id,,label] of detailFields){tryRead(()=>{setInitial(id,current(label,'texts',1)[0].value);if(fields[id+'Free'])fields[id+'Free'].checked=current(label,'checks',1)[0].checked;});}}});
-        if(detailFields.some(([id])=>val(id)))details.open=true;
-        const syncLanguage=()=>{ const other=val('language')==='その他'; fields.otherLanguage.parentElement.hidden=!other; fields.otherLanguage.required=other; };
+        if(detailFields.some(([id])=>val(id))||selected('permalinkFree'))details.open=true;
         const syncPages=()=>{fields.start.disabled=fields.end.disabled=selected('noPages');};
-        fields.language.addEventListener('change',syncLanguage);fields.noPages.addEventListener('change',syncPages);syncLanguage();syncPages();
+        fields.noPages.addEventListener('change',syncPages);syncPages();
         function validate() {
-            if(!val('titleJP')&&!val('titleEN'))throw new Error('Enter at least one title.');
-            if(!val('authorsJP')&&!val('authorsEN'))throw new Error('Enter at least one author field.');
+            if(!val('titleEN'))throw new Error('Enter a title.');
+            if(!val('authorsEN'))throw new Error('Enter authors.');
             if(!selected('noPages')&&!val('start'))throw new Error('Enter a start page or select No page numbers.');
             if(!/^\d{4}$/.test(val('year'))||Number(val('year'))<1)throw new Error('Enter a four-digit Gregorian year.');
             if(val('month')&&(!/^\d{1,2}$/.test(val('month'))||+val('month')<1||+val('month')>12))throw new Error('Month must be 1–12.');
@@ -471,10 +551,17 @@
             function selectText(el,text){const option=optionByText(el,text);if(option.disabled)throw new Error('Dropdown option disabled: '+text);put(el,option.value);}
             radio('public','公開区分',publicOrder); selectText(current('論文種別','selects',1)[0],val('type'));
             radio('language','言語種別',languageOptions.map(x=>x[0]));
-            // Other-language input may only become enabled after choosing Other.
-            if(val('language')==='その他'){const el=current('言語種別','texts',1)[0];plan.push(()=>setValue(el,val('otherLanguage')));}
             radio('peer','査読の有無',peerOptions.map(x=>x[0]));radio('invited','招待の有無',invitedOptions.map(x=>x[0]));radio('location','掲載区分',locationOptions.map(x=>x[0]));
-            const t=current('表題','areas',2);put(t[0],val('titleJP')||val('titleEN'));if(wanted('titleEN'))put(t[1],val('titleEN'));
+            // The single field targets the English control. Mirror into the
+            // required primary field only when empty or already a copy of English.
+            // Preserve separately entered Japanese text in existing records.
+            function putEnglishPair(pair,id) {
+                const [primary,english]=pair, value=val(id);
+                const oldPrimary=primary.value.trim(), oldEnglish=english.value.trim();
+                if(!oldPrimary || oldPrimary===oldEnglish) put(primary,value);
+                if(dirty.has(id)||oldEnglish||!oldPrimary) put(english,value);
+            }
+            putEnglishPair(current('表題','areas',2),'titleEN');
             put(current('掲載誌名','texts',4)[0],val('journal'));
             if(wanted('publisher'))put(current('出版社','texts',2)[0],val('publisher'));
             if(wanted('totalPages'))put(current('総ページ数','texts',1)[0],val('totalPages'));
@@ -483,9 +570,10 @@
             if(wanted('volume')){put(p[0],val('volume'));put(p[2],val('volume'));}if(wanted('issue')){put(p[1],val('issue'));put(p[3],val('issue'));}
             tick(no,selected('noPages'));
             if(!selected('noPages')){plan.push(()=>setValue(p[4],val('start')));if(wanted('end'))plan.push(()=>setValue(p[5],val('end')));}
-            const a=current('著者・共著者','areas');if(a.length<2)throw new Error('Author textareas missing');put(a[0],val('authorsJP')||val('authorsEN'));if(wanted('authorsEN'))put(a[1],val('authorsEN'));
+            const a=current('著者・共著者','areas');if(a.length<2)throw new Error('Author textareas missing');putEnglishPair(a,'authorsEN');
+            planAuthorshipRoles(plan);
             selectText(current('発行年月日','selects',1)[0],'西暦');const d=current('発行年月日','texts',3);put(d[0],val('year'));if(wanted('month'))put(d[1],val('month'));if(wanted('day'))put(d[2],val('day'));
-            if(wanted('abstractJP')||wanted('abstractEN')){const x=current('概要','areas',2);if(wanted('abstractJP'))put(x[0],val('abstractJP'));if(wanted('abstractEN'))put(x[1],val('abstractEN'));}
+            if(wanted('abstractJP'))put(current('概要','areas',2)[0],val('abstractJP'));
             return plan;
         }
         async function fillDetails() {
@@ -559,7 +647,7 @@
         const panel = document.createElement('aside'); panel.id = PANEL_ID;
         panel.setAttribute('aria-label','Presentation entry assistant');
         panel.innerHTML = `<div class="kp-head"><strong>Presentation entry</strong><button type="button" class="kp-toggle" aria-expanded="true">Hide</button></div>
-          <form autocomplete="off"><div class="kp-scroll"><p class="kp-note">Enter details here, then autofill the original form. * Required. Nothing is submitted automatically.</p></div>
+          <form autocomplete="off"><div class="kp-scroll"><p class="kp-note">Enter details here, then click "Autofill form". Click "Submit" when complete.</p></div>
           <div class="kp-footer"><div class="kp-status" role="status" aria-live="polite">Ready to enter presentation details.</div><div class="kp-actions"><button type="submit">Autofill form</button><button type="button" class="kp-jump">Go to Submit</button></div></div></form>`;
         const sideForm = panel.querySelector('form'); const scroll = panel.querySelector('.kp-scroll');
         const status = panel.querySelector('.kp-status'); const fillButton = sideForm.querySelector('button[type=submit]');
@@ -595,27 +683,23 @@
         const setInitial = (id,value) => { if(value!=null) fields[id].value=value; };
         function tryRead(fn) { try { fn(); } catch(e) { console.warn('KSU presentation prefill:',e.message); } }
         const radioFields = [
-            ['public','公開区分',publicOptions,publicOrder], ['language','発表言語',languageOptions],
+            ['public','公開区分',publicOptions,publicOrder], ['language','発表言語',simplePubLanguages,languageOptions.map(x=>x[0])],
             ['conferenceType','学会区分',conferenceOptions], ['format','発表形式',formatOptions], ['talkType','講演区分',talkOptions]
         ];
         field(scroll,'public','List on KSU profile page?',{required:true,choices:publicOptions});
-        field(scroll,'language','Presentation language',{required:true,choices:languageOptions});
-        field(scroll,'otherLanguage','Other language',{placeholder:'Specify language'});fields.otherLanguage.parentElement.hidden=true;
-        heading('Presentation and conference',true);
-        field(scroll,'titleJP','Title — Japanese',{area:true});field(scroll,'titleEN','Title — English',{area:true});
-        note(scroll,'Enter a title in at least one language.');
-        field(scroll,'meetingJP','Conference name — Japanese');field(scroll,'meetingEN','Conference name — English');
-        note(scroll,'Enter a conference name in at least one language.');
+        field(scroll,'language','Presentation language',{required:true,choices:simplePubLanguages});
+        field(scroll,'titleEN','Title',{area:true,required:true});
+        field(scroll,'meetingEN','Conference name',{required:true});
         field(scroll,'conferenceType','Conference type',{required:true,choices:conferenceOptions});
         check(scroll,'invited','Invited presentation');
         field(scroll,'format','Presentation format',{required:true,choices:formatOptions});
-        field(scroll,'talkType','Talk type',{required:true,choices:talkOptions});
-        heading('Presenters and presentation date',true);
-        field(scroll,'presentersJP','Presenters — Japanese',{area:true});field(scroll,'presentersEN','Presenters — English',{area:true});
-        note(scroll,'Enter names in at least one language, separated by a comma and a space. Put ◎ before the speaking presenter. Confirm KSU researcher selections in the original form.');
+        field(scroll,'talkType','Talk type',{required:true,choices:[...talkOptions.filter(([jp])=>jp==='一般'),...talkOptions.filter(([jp])=>jp!=='一般')]});
+        field(scroll,'presentersEN','Presenters',{area:true,required:true});
+        note(scroll,'Separate names with a comma and a space.');
         function dateFields(parent,prefix,required=false){const g=grid(parent,3);field(g,prefix+'Year','Year',{required,numeric:true,placeholder:'YYYY'});field(g,prefix+'Month','Month',{numeric:true,placeholder:'MM'});field(g,prefix+'Day','Day',{numeric:true,placeholder:'DD'});}
+        heading('Presentation date');
         dateFields(scroll,'date',true);
-        heading('Location',true);
+        heading('Location');
         // SCNTRY is the visible country control. SCNTRY_hidden is a separate
         // control used by the website; never translate or write to it directly.
         function getCountrySelect() {
@@ -635,41 +719,45 @@
                     const english=countryNamesByCode[o.value.trim().toUpperCase()]||countryNames[jp]||jp||o.value;
                     return [o.value,english];
                 })
-                .sort((a,b)=>a[1].localeCompare(b[1],'en'));
+                .sort((a,b)=>Number(b[0].trim().toUpperCase()==='JPN')-Number(a[0].trim().toUpperCase()==='JPN') || a[1].localeCompare(b[1],'en'));
         });
         field(scroll,'country','Country',{choices:countryChoices});
         if(!countryChoices.length){fields.country.disabled=true;note(scroll,'Country options could not be read. Select a country in the original form if needed.');}
-        field(scroll,'venueJP','Venue / location — Japanese');field(scroll,'venueEN','Venue / location — English');
-        note(scroll,'Enter a venue or location in at least one language.');
+        field(scroll,'venueEN','Venue / location',{required:true});
         const period=disclosure('Conference dates (optional)');
         note(period,'Start date');dateFields(period,'start');note(period,'End date');dateFields(period,'end');
         check(scroll,'international','International co-authorship');
-        const abstract=disclosure('Abstract (optional)');field(abstract,'abstractJP','Abstract — Japanese',{area:true,rows:3});field(abstract,'abstractEN','Abstract — English',{area:true,rows:3});
+        const abstract=disclosure('Abstract (optional)');field(abstract,'abstractEN','Abstract text',{area:true,rows:3});
         field(scroll,'external','External URL');
         for(const [id,label,options,order=options.map(x=>x[0])] of radioFields){tryRead(()=>{const chosen=[...radioMap(originalForm,label,order)].find(([,r])=>r.checked)?.[0];if(options.some(([jp])=>jp===chosen))setInitial(id,chosen);});}
-        tryRead(()=>setInitial('otherLanguage',current('発表言語','texts',1)[0].value));
-        const pairs=[['titleJP','titleEN','発表タイトル','areas',true],['meetingJP','meetingEN','会議名','texts',true],['presentersJP','presentersEN','発表者・共同発表者','areas',true],['venueJP','venueEN','開催地','texts',true],['abstractJP','abstractEN','概要','areas',false]];
+        const pairs=[['titleEN','発表タイトル','areas',true],['meetingEN','会議名','texts',true],['presentersEN','発表者・共同発表者','areas',true],['venueEN','開催地','texts',true],['abstractEN','概要','areas',false]];
         function pairControls(label,kind){const x=current(label,kind);if(x.length<2 || (label!=='発表者・共同発表者'&&x.length!==2))throw new Error(label+': unexpected number of fields');return x;}
-        for(const [jp,en,label,kind] of pairs)tryRead(()=>{const x=pairControls(label,kind);setInitial(jp,x[0].value);setInitial(en,x[1].value);});
+        for(const [id,label,kind] of pairs)tryRead(()=>{const x=pairControls(label,kind);setInitial(id,x[1].value.trim()?x[1].value:x[0].value);});
         for(const [id,label] of [['invited','招聘'],['international','国際共著']])tryRead(()=>{fields[id].checked=current(label,'checks',1)[0].checked;});
         tryRead(()=>{const s=getCountrySelect();if(countryChoices.some(([id])=>id===s.value))setInitial('country',s.value);});
         tryRead(()=>setInitial('external',current('外部リンクURL','texts',1)[0].value));
         function readDate(label,prefix,index,count){const ss=current(label,'selects',count),x=current(label,'texts',count*3);if(normalize(ss[index].selectedOptions[0]?.textContent)==='西暦')['Year','Month','Day'].forEach((suffix,i)=>setInitial(prefix+suffix,x[index*3+i].value));}
         tryRead(()=>readDate('発表年月日','date',0,1));tryRead(()=>readDate('開催期間','start',0,2));tryRead(()=>readDate('開催期間','end',1,2));
         if(['start','end'].some(p=>['Year','Month','Day'].some(s=>val(p+s))))period.open=true;
-        if(val('abstractJP')||val('abstractEN'))abstract.open=true;
-        const syncLanguage=()=>{const other=val('language')==='その他';fields.otherLanguage.parentElement.hidden=!other;fields.otherLanguage.required=other;};
-        fields.language.addEventListener('change',syncLanguage);syncLanguage();
+        if(val('abstractEN'))abstract.open=true;
         function validateDate(prefix,required){const y=val(prefix+'Year'),m=val(prefix+'Month'),d=val(prefix+'Day');if(!required&&!y&&!m&&!d)return;if(!/^\d{4}$/.test(y)||+y<1)throw new Error('Enter a four-digit Gregorian year for '+prefix+' date.');if(m&&(!/^\d{1,2}$/.test(m)||+m<1||+m>12))throw new Error('Month must be 1–12.');if(d&&(!/^\d{1,2}$/.test(d)||!m||+d<1||+d>new Date(+y,+m,0).getDate()))throw new Error('Enter a valid day and month.');}
-        function validate(){for(const [jp,en,label,,required] of pairs)if(required&&!val(jp)&&!val(en))throw new Error('Enter '+({発表タイトル:'a title',会議名:'a conference name','発表者・共同発表者':'presenter names',開催地:'a venue or location'}[label])+' in at least one language.');validateDate('date',true);validateDate('start',false);validateDate('end',false);}
+        function validate(){for(const [id,label,,required] of pairs)if(required&&!val(id))throw new Error('Enter '+({発表タイトル:'a title',会議名:'a conference name','発表者・共同発表者':'presenter names',開催地:'a venue or location'}[label])+'.');validateDate('date',true);validateDate('start',false);validateDate('end',false);}
         function buildPlan(){
             const plan=[];
             function put(el,value,mayEnable=false){if(!el||!el.isConnected)throw new Error('Target field not found.');if(!mayEnable&&(el.disabled||el.readOnly)&&el.value!==String(value))throw new Error('Target field is disabled or read-only.');if(el.value!==String(value))plan.push(()=>setValue(el,value));}
             function tick(el,value){if(!el||!el.isConnected||el.disabled)throw new Error('Target option unavailable.');if(el.checked!==value)plan.push(()=>setChecked(el,value));}
             function selectText(el,text){const option=optionByText(el,text);if(option.disabled)throw new Error('Dropdown option disabled: '+text);put(el,option.value);}
             for(const [id,label,options,order=options.map(x=>x[0])] of radioFields){const el=radioMap(originalForm,label,order).get(val(id));if(!el)throw new Error(label+': selection not found');tick(el,true);}
-            if(val('language')==='その他')put(current('発表言語','texts',1)[0],val('otherLanguage'),true);
-            for(const [jp,en,label,kind,required] of pairs){if(!required&&!wanted(jp)&&!wanted(en))continue;const x=pairControls(label,kind);if(required)put(x[0],val(jp)||val(en));else if(wanted(jp))put(x[0],val(jp));if(wanted(en))put(x[1],val(en));}
+            // Match the publication assistant: use the English field, mirror into
+            // the primary field when empty or previously a copy, and preserve
+            // independently entered primary-language text in existing records.
+            for(const [id,label,kind,required] of pairs){
+                if(!required&&!wanted(id))continue;
+                const [primary,english]=pairControls(label,kind), value=val(id);
+                const oldPrimary=primary.value.trim(), oldEnglish=english.value.trim();
+                if(!oldPrimary || oldPrimary===oldEnglish)put(primary,value);
+                if(dirty.has(id)||oldEnglish||!oldPrimary)put(english,value);
+            }
             for(const [id,label] of [['invited','招聘'],['international','国際共著']])if(selected(id)||dirty.has(id))tick(current(label,'checks',1)[0],selected(id));
             if(wanted('country')&&!fields.country.disabled){const s=getCountrySelect();const option=Array.from(s.options).find(o=>!o.disabled&&o.value===fields.country.value);if(!option)throw new Error('Country option unavailable.');put(s,option.value);}
             function putDate(label,prefix,index,count,required){const suffixes=['Year','Month','Day'];if(!required&&!suffixes.some(s=>wanted(prefix+s)))return;const ss=current(label,'selects',count),x=current(label,'texts',count*3);if(val(prefix+'Year'))selectText(ss[index],'西暦');suffixes.forEach((suffix,i)=>{if((required&&i===0)||wanted(prefix+suffix))put(x[index*3+i],val(prefix+suffix));});}
