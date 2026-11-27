@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KSU Research Profile - English Navigation
 // @namespace    KSU Research Profile
-// @version      1.9.5
+// @version      1.9.6
 // @description  English navigation, action buttons and publication/presentation entry assistants
 // @match        https://ras2.kyusan-u.ac.jp/kysap/*
 // @updateURL    https://raw.githubusercontent.com/hnbovee-ai/LERC/main/ksu-academic-profile.user.js
@@ -27,7 +27,6 @@
     const isMainPage = ['P200', 'P300'].includes(page);
     const isHomePage = page === 'P820';
     const isEditingPage = page === 'P850';
-    const isOtherPage = !isMainPage && !isHomePage && !isEditingPage;
     const hasYearFilter = ['P7211', 'P7231', 'P850'].includes(page);
     const isPresentation = page === 'P7231';
     const hasEntryAssistant = page === 'P7211' || isPresentation;
@@ -49,8 +48,54 @@
     ];
     const colors = { preview: '#288252', required: '#3268A8', optional: '#737B85', orange: '#D97706' };
     const activeColors = { required: '#14365D', optional: '#343A40' };
+    // Detect the original researcher menu on any page, not just P820/P850.
+    function findResearcherMenu() {
+        const cells = all(document, 'td.submenu');
+        const headed = cells.find(cell => all(cell, '.submenu-item').some(
+            e => normalize(e.textContent).replace(/^[・･>＞]+/, '') === '研究者情報'
+        ));
+        if (headed) return headed;
+        // Fallback for variants of the same sidebar without its normal heading.
+        return cells.find(cell => {
+            const labels = new Set(all(cell, 'a.submenu').map(a => normalize(a.textContent)));
+            return labels.has('公開HPプレビュー') && menuItems.filter(([,jp,category]) =>
+                category !== 'preview' && labels.has(normalize(jp))).length >= 2;
+        }) || (isHomePage || isEditingPage ? cells.find(cell => cell.querySelector('a.submenu')) : null) || null;
+    }
+    const hasProfileMenu = Boolean(findResearcherMenu()) || isHomePage || isEditingPage;
+    function profileLinks() {
+        const menu = findResearcherMenu();
+        return menu ? all(menu, 'a.submenu') : (isHomePage || isEditingPage ? all(document, MENU_SELECTOR) : []);
+    }
+    function findProfileLink(japanese) {
+        return profileLinks().find(a => normalize(a.textContent) === normalize(japanese));
+    }
+    function detectActiveItem() {
+        const menu = findResearcherMenu();
+        if (menu) {
+            // The current section is normally plain text rather than a link.
+            const matches = all(menu, '.menulist').flatMap(row => {
+                const label = row.querySelector('[class*="menulist-string"]') || row;
+                const jp = normalize(label.textContent).replace(/^[>＞・･]+/, '');
+                const item = menuItems.find(([,name,category]) => category !== 'preview' && normalize(name) === jp);
+                return item && !all(row, 'a.submenu').some(a => normalize(a.textContent) === jp) ? [jp] : [];
+            });
+            if (new Set(matches).size === 1) return matches[0];
+        }
+        // Recognize titles on detail pages, including new/edit variants.
+        for (const header of all(document, '.header-title')) {
+            const title = normalize(header.textContent);
+            const item = menuItems.find(([,name,category]) => category !== 'preview' &&
+                [name, name+'新規登録', name+'登録', name+'変更', name+'編集', name+'一覧'].some(t => normalize(t) === title));
+            if (item) return normalize(item[1]);
+        }
+        if (page === 'P7211') return normalize('学術雑誌');
+        if (page === 'P7231') return normalize('学会発表');
+        return isEditingPage ? sessionStorage.getItem(STORAGE_KEY) || '' : '';
+    }
     if (isHomePage || isMainPage) sessionStorage.removeItem(STORAGE_KEY);
-    let activeItem = isEditingPage ? sessionStorage.getItem(STORAGE_KEY) || '' : '';
+    let activeItem = hasProfileMenu && !isHomePage ? detectActiveItem() : '';
+    if (hasProfileMenu && activeItem) sessionStorage.setItem(STORAGE_KEY, activeItem);
     function setActiveItem(japanese) {
         activeItem = normalize(japanese);
         sessionStorage.setItem(STORAGE_KEY, activeItem);
@@ -58,7 +103,7 @@
     }
     function updateButtonStyles() {
         const bar = document.getElementById(MENU_ID);
-        if (!bar || isMainPage || isOtherPage) return;
+        if (!bar || !hasProfileMenu) return;
         all(bar, 'button[data-category]').forEach(button => {
             const category = button.dataset.category;
             const selected = button.dataset.japanese === activeItem && category !== 'preview';
@@ -92,7 +137,7 @@
     }
     function clickMenuItem(japanese, english, category) {
         const target = normalize(japanese);
-        const link = all(document, MENU_SELECTOR).find(e => normalize(e.textContent) === target);
+        const link = findProfileLink(japanese);
         if (!link) {
             if (target !== activeItem) alert('Menu item not found: ' + english);
             return;
@@ -106,6 +151,7 @@
         if (!link) return;
         const item = menuItems.find(entry => normalize(entry[1]) === normalize(link.textContent));
         if (item && item[2] !== 'preview') setActiveItem(item[1]);
+        else if (!item) setActiveItem('');
     }, true);
     function addHoverEffect(button) {
         button.addEventListener('mouseenter', () => { button.style.filter = 'brightness(1.15)'; });
@@ -130,16 +176,26 @@
         bar.append(legend);
     }
     function createNavigation() {
-        if (document.getElementById(MENU_ID) || (isOtherPage && !findTopMenuLink())) return;
+        if (document.getElementById(MENU_ID) || (!hasProfileMenu && !isMainPage && !findTopMenuLink())) return;
         const bar = document.createElement('div'); bar.id = MENU_ID;
         bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:8px 10px;background:#f5f6f8;border-bottom:1px solid #c5c9ce;box-shadow:0 2px 5px #0002;box-sizing:border-box;font-family:Arial,sans-serif;';
-        if (isMainPage) createLargeButton(bar, '✎  Edit academic profile  →', openAcademicProfile);
-        else if (isOtherPage) createLargeButton(bar, '⌂  Top menu', openTopMenu);
+        if (!hasProfileMenu && isMainPage) createLargeButton(bar, '✎  Edit academic profile  →', openAcademicProfile);
+        else if (!hasProfileMenu) createLargeButton(bar, '⌂  Top menu', openTopMenu);
         else {
+            if (findTopMenuLink()) {
+                const top = document.createElement('button'); top.type = 'button'; top.textContent = '⌂  Top menu';
+                top.style.cssText = `background:${colors.orange};color:white;border:2px solid #B45309;border-radius:4px;padding:6px 9px;font:700 12px/1.2 Arial,sans-serif;white-space:nowrap;cursor:pointer;box-sizing:border-box;`;
+                addHoverEffect(top); top.addEventListener('click', openTopMenu); bar.append(top);
+            }
             for (const [english, japanese, category] of menuItems) {
                 const button = document.createElement('button'); button.type = 'button'; button.textContent = english;
                 button.dataset.japanese = normalize(japanese); button.dataset.category = category;
                 button.style.cssText = `background:${colors[category]};color:white;border:2px solid transparent;border-radius:4px;padding:6px 9px;font:500 12px/1.2 Arial,sans-serif;white-space:nowrap;cursor:pointer;box-sizing:border-box;`;
+                // A missing link is never replaced by a guessed URL or form action.
+                if (!findProfileLink(japanese) && normalize(japanese) !== activeItem) {
+                    button.disabled = true; button.style.opacity = '0.45'; button.style.cursor = 'not-allowed';
+                    button.title = 'This section is not available on the current page.';
+                }
                 addHoverEffect(button); button.addEventListener('click', () => clickMenuItem(japanese, english, category)); bar.append(button);
             }
             createLegend(bar);
