@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         KSU Research Profile - English Navigation
 // @namespace    KSU Research Profile
-// @version      1.9.6
+// @version      1.9.7
 // @description  English navigation, action buttons and publication/presentation entry assistants
 // @match        https://ras2.kyusan-u.ac.jp/kysap/*
 // @updateURL    https://raw.githubusercontent.com/hnbovee-ai/LERC/main/ksu-academic-profile.user.js
@@ -135,6 +135,48 @@
         sessionStorage.removeItem(STORAGE_KEY);
         link.click();
     }
+    // Use the bottommost visible original Back control, never browser history.
+    function findOriginalBackButton() {
+        const buttons = all(document, 'input[type="button"],input[type="submit"],button').filter(button => {
+            if (button.closest('#' + MENU_ID + ',#ksu-publication-panel,#ksu-presentation-panel')) return false;
+            const label = normalize(button.tagName === 'INPUT' ? button.value : button.textContent);
+            if (!['戻る', 'Back'].includes(label)) return false;
+            const style = getComputedStyle(button);
+            return button.getClientRects().length > 0 && style.visibility === 'visible';
+        });
+        // Some entry pages have Back controls above and below the form.
+        return buttons.reduce((last, button) => !last || button.getBoundingClientRect().bottom >= last.getBoundingClientRect().bottom ? button : last, null);
+    }
+    function openOriginalBack() {
+        const button = findOriginalBackButton();
+        if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') button.click();
+        else refreshTopBackButton();
+    }
+    function refreshTopBackButton(bar = document.getElementById(MENU_ID)) {
+        if (!bar) return;
+        const original = findOriginalBackButton();
+        let button = bar.querySelector('#ksu-top-back');
+        if (!original) {
+            if (button) button.remove();
+            return;
+        }
+        if (!button) {
+            button = document.createElement('button');
+            button.id = 'ksu-top-back'; button.type = 'button'; button.textContent = '← Back';
+            button.style.cssText = hasProfileMenu
+                ? 'background:#596675;color:white;border:2px solid #46515e;border-radius:4px;padding:6px 9px;font:700 12px/1.2 Arial,sans-serif;white-space:nowrap;cursor:pointer;box-sizing:border-box;'
+                : 'background:#596675;color:white;border:2px solid #46515e;border-radius:5px;padding:10px 20px;min-width:110px;font:700 16px/1.2 Arial,sans-serif;white-space:nowrap;cursor:pointer;box-sizing:border-box;box-shadow:0 2px 5px #0004;';
+            addHoverEffect(button); button.addEventListener('click', openOriginalBack);
+            const top = bar.querySelector('#ksu-top-menu');
+            if (top) top.after(button);
+            else if (!hasProfileMenu && bar.firstElementChild) bar.firstElementChild.after(button);
+            else bar.prepend(button);
+        }
+        const disabled = original.disabled || original.getAttribute('aria-disabled') === 'true';
+        if (button.disabled !== disabled) button.disabled = disabled;
+        button.style.opacity = disabled ? '0.5' : '1';
+        button.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
     function clickMenuItem(japanese, english, category) {
         const target = normalize(japanese);
         const link = findProfileLink(japanese);
@@ -163,7 +205,7 @@
         button.style.cssText = `background:${colors.orange};color:white;border:2px solid #B45309;
           border-radius:5px;padding:10px 20px;min-width:220px;font:700 16px/1.2 Arial,sans-serif;
           white-space:nowrap;cursor:pointer;box-sizing:border-box;box-shadow:0 2px 5px #0004;`;
-        addHoverEffect(button); button.addEventListener('click', action); bar.append(button);
+        addHoverEffect(button); button.addEventListener('click', action); bar.append(button); return button;
     }
     function createLegend(bar) {
         const legend = document.createElement('div'); legend.id = 'ksu-navigation-legend';
@@ -176,14 +218,15 @@
         bar.append(legend);
     }
     function createNavigation() {
-        if (document.getElementById(MENU_ID) || (!hasProfileMenu && !isMainPage && !findTopMenuLink())) return;
+        if (document.getElementById(MENU_ID) || (!hasProfileMenu && !isMainPage && !findTopMenuLink() && !findOriginalBackButton())) return;
         const bar = document.createElement('div'); bar.id = MENU_ID;
         bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:8px 10px;background:#f5f6f8;border-bottom:1px solid #c5c9ce;box-shadow:0 2px 5px #0002;box-sizing:border-box;font-family:Arial,sans-serif;';
         if (!hasProfileMenu && isMainPage) createLargeButton(bar, '✎  Edit academic profile  →', openAcademicProfile);
-        else if (!hasProfileMenu) createLargeButton(bar, '⌂  Top menu', openTopMenu);
-        else {
+        else if (!hasProfileMenu) {
+            if (findTopMenuLink()) createLargeButton(bar, '⌂  Top menu', openTopMenu).id = 'ksu-top-menu';
+        } else {
             if (findTopMenuLink()) {
-                const top = document.createElement('button'); top.type = 'button'; top.textContent = '⌂  Top menu';
+                const top = document.createElement('button'); top.id = 'ksu-top-menu'; top.type = 'button'; top.textContent = '⌂  Top menu';
                 top.style.cssText = `background:${colors.orange};color:white;border:2px solid #B45309;border-radius:4px;padding:6px 9px;font:700 12px/1.2 Arial,sans-serif;white-space:nowrap;cursor:pointer;box-sizing:border-box;`;
                 addHoverEffect(top); top.addEventListener('click', openTopMenu); bar.append(top);
             }
@@ -202,6 +245,7 @@
         }
         const initialPadding = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
         document.body.append(bar);
+        refreshTopBackButton(bar);
         const resize = () => { document.body.style.paddingTop = initialPadding + bar.offsetHeight + 'px'; };
         resize(); new ResizeObserver(resize).observe(bar); updateButtonStyles();
     }
@@ -275,10 +319,11 @@
 
     function monitorActionButtons() {
         let scheduled = false;
-        new MutationObserver(() => {
+        new MutationObserver(records => {
+            if (!records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('#' + MENU_ID + ',#' + PANEL_ID))) return;
             if (scheduled) return; scheduled = true;
-            requestAnimationFrame(() => { scheduled = false; enhanceActionButtons(); if (hasEntryAssistant) enhancePublicationSubmit(); if (hasYearFilter) enhancePublicationYearFilter(); });
-        }).observe(document.body, { childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:['value'] });
+            requestAnimationFrame(() => { scheduled = false; enhanceActionButtons(); if (hasEntryAssistant) enhancePublicationSubmit(); if (hasYearFilter) enhancePublicationYearFilter(); if (!document.getElementById(MENU_ID) && findOriginalBackButton()) createNavigation(); refreshTopBackButton(); });
+        }).observe(document.body, { childList:true, subtree:true, characterData:true, attributes:true, attributeFilter:['value','disabled','aria-disabled','hidden','style','class'] });
     }
 
     // ============================================================
@@ -389,7 +434,7 @@
         if (!button) return;
         if (button.tagName === 'INPUT') { if (button.value !== 'Submit') button.value = 'Submit'; }
         else if (button.textContent !== 'Submit') button.textContent = 'Submit';
-        button.classList.add('ksu-publication-submit');
+        if (!button.classList.contains('ksu-publication-submit')) button.classList.add('ksu-publication-submit');
     }
     function installPanelStyles() {
         const style = document.createElement('style');
